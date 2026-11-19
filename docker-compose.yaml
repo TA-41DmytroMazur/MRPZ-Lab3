@@ -1,0 +1,88 @@
+# Явна латинська назва проєкту (необхідна, оскільки локальна папка 'МРПЗ' кирилична)
+name: classroom-management
+
+services:
+  # ============================================================================
+  # 1. БАЗА ДАНИХ PostgreSQL 16 (окремий контейнер)
+  # ============================================================================
+  db:
+    image: postgres:16-alpine
+    container_name: classroom_postgres
+    restart: unless-stopped
+    # Параметри БД підтягуються зі змінних середовища (файлу .env) — без хардкоду паролів
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    # Docker Volume забезпечує збереження даних навіть після docker compose down і перезапуску
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - classroom_network
+    # Перевірка готовності PostgreSQL приймати підключення (pg_isready)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ============================================================================
+  # 2. ASP.NET Core 8 Web API (збирається з нашого multi-stage Dockerfile)
+  # ============================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: classroom_webapi
+    restart: unless-stopped
+    # API стартує лише ПІСЛЯ того, як контейнер БД пройде healthcheck (service_healthy)
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      EnableSwagger: ${ENABLE_SWAGGER:-true}
+      # Host=db — звернення до контейнера БД за внутрішнім DNS-іменем у Docker-мережі
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+    # Доступ до Web API та Swagger із браузера на хості: http://localhost:8080/swagger
+    ports:
+      - "${API_PORT:-8080}:8080"
+    networks:
+      - classroom_network
+
+  # ============================================================================
+  # 3. PgAdmin 4 (графічний веб-інструмент адміністрування PostgreSQL)
+  # ============================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: classroom_pgadmin
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # Логін і пароль для входу в веб-панель PgAdmin із файлу .env
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    # Доступ до PgAdmin у браузері: http://localhost:5050
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      # Том для збереження налаштувань PgAdmin між перезапусками
+      - pgadmin_data:/var/lib/pgadmin
+      # Автоматичне попереднє додавання сервера db:5432 у список серверів (тільки читання :ro)
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - classroom_network
+
+# Спільна ізольована bridge-мережа для взаємодії контейнерів за іменами сервісів (db, api, pgadmin)
+networks:
+  classroom_network:
+    driver: bridge
+
+# Іменовані Docker Volumes (зберігаються на хості окремо від життєвого циклу контейнерів)
+volumes:
+  postgres_data:
+  pgadmin_data:
