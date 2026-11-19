@@ -1,0 +1,14 @@
+**/.git
+**/.gitignore
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/TestResults
+.env
+*.docx
+*.pdf
+*.md
+Dockerfile*
+docker-compose*
+pgadmin/

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using ClassroomManagement.Api.DTOs;
 using ClassroomManagement.Api.Models;
 using ClassroomManagement.Api.Repositories;
@@ -209,5 +210,47 @@ public class BookingTests
 
         // Assert
         result.ResultType.Should().Be(BookingValidationResultType.Valid);
+    }
+
+    [Fact]
+    public void CreateBookingDto_EmptyClassroomId_ShouldFailDtoValidation()
+    {
+        // Arrange
+        var dto = new CreateBookingDto
+        {
+            ClassroomId = Guid.Empty,
+            ReservedBy = "Кафедра ПЗ",
+            StartTime = DateTime.UtcNow.AddHours(1),
+            EndTime = DateTime.UtcNow.AddHours(2)
+        };
+        var results = new List<ValidationResult>();
+
+        // Act
+        var isValid = Validator.TryValidateObject(dto, new ValidationContext(dto), results, validateAllProperties: true);
+
+        // Assert
+        isValid.Should().BeFalse();
+        results.Should().Contain(r => r.ErrorMessage != null && r.ErrorMessage.Contains("порожній GUID"));
+    }
+
+    [Fact]
+    public void CreateBookingDto_TooShortReservedBy_ShouldFailDtoValidation()
+    {
+        // Arrange
+        var dto = new CreateBookingDto
+        {
+            ClassroomId = _sampleClassroomId,
+            ReservedBy = "А",
+            StartTime = DateTime.UtcNow.AddHours(1),
+            EndTime = DateTime.UtcNow.AddHours(2)
+        };
+        var results = new List<ValidationResult>();
+
+        // Act
+        var isValid = Validator.TryValidateObject(dto, new ValidationContext(dto), results, validateAllProperties: true);
+
+        // Assert
+        isValid.Should().BeFalse();
+        results.Should().Contain(r => r.ErrorMessage != null && r.ErrorMessage.Contains("щонайменше 2 символи"));
     }
 }
